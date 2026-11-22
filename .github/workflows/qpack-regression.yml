@@ -19,9 +19,10 @@ jobs:
   qpack-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@9c091bb21bda9f5d6aeb4c2d9c7362e8dae4041e0 # v7.0.0
         with:
           persist-credentials: false
 
@@ -33,3 +34,13 @@ jobs:
             --test \
             --configuration Release \
             --ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: QPACK-test-results
+          path: |
+            artifacts/TestResults/Release/
+            artifacts/log/Release/
+          if-no-files-found: warn
