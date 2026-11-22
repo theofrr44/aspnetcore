@@ -70,6 +70,38 @@ namespace System.Net.Http.Unit.Tests.QPack
         }
 
         [Fact]
+        
+[Fact]
+public void Reset_ClearsPendingStaticHeaderName()
+{
+    _decoder.Decode(
+        new byte[] { 0x00, 0x00, 0x50 },
+        endHeaders: false,
+        handler: _handler);
+
+    _decoder.Reset();
+
+    _decoder.Decode(
+        new byte[]
+        {
+            0x00, 0x00,
+            0x21, 0x61,
+            0x0B,
+            0x65, 0x78, 0x61, 0x6D,
+            0x70, 0x6C, 0x65, 0x2E,
+            0x63, 0x6F, 0x6D
+        },
+        endHeaders: true,
+        handler: _handler);
+
+    Assert.True(
+        _handler.DecodedHeaders.TryGetValue("a", out string value));
+
+    Assert.Equal("example.com", value);
+    Assert.False(
+        _handler.DecodedHeaders.ContainsKey(":authority"));
+}
+
         public void DecodesIndexedHeaderField_StaticTableWithValue()
         {
             _decoder.Decode(new byte[] { 0, 0 }, endHeaders: false, handler: _handler);
