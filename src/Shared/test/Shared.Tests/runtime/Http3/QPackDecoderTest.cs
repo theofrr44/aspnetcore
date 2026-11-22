@@ -69,7 +69,7 @@ namespace System.Net.Http.Unit.Tests.QPack
             _decoder.Dispose();
         }
 
-        [Fact]
+        
         
 [Fact]
 public void Reset_ClearsPendingStaticHeaderName()
@@ -115,6 +115,8 @@ public void Reset_ClearsPendingStaticHeaderName()
         [Theory]
         [InlineData(new byte[] { 0xc0 }, 0, ":authority", "")]
         [InlineData(new byte[] { 0xff, 0x23 }, 98, "x-frame-options", "sameorigin")]
+
+        [Fact]
         public void DecodesIndexedHeaderField_StaticTableBoundaries(byte[] encoded, int index, string expectedHeaderName, string expectedHeaderValue)
         {
             _decoder.Decode(new byte[] { 0x00, 0x00 }, endHeaders: false, handler: _handler);
