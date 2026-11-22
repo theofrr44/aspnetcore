@@ -24,4 +24,4 @@ jobs:
             --test \
             --configuration Release \
             --ci \
-            -- /p:TestFilter="FullyQualifiedName~Reset_ClearsPendingStaticHeaderName"
+            "/p:VSTestTestCaseFilter=FullyQualifiedName~Reset_ClearsPendingStaticHeaderName"
