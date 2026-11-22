@@ -18,28 +18,6 @@ namespace System.Net.Http.Unit.Tests.QPack
 {
     public class QPackDecoderTests : IDisposable
     {
-
-        
-        [Fact]
-        public void T0_Block2_OnFreshDecoder_DecodesLiteralA()
-        {
-            byte[] block =
-            {
-                0x00, 0x00, 0x21, 0x61, 0x0B,
-                0x65, 0x78, 0x61, 0x6D,
-                0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D
-            };
-
-            _decoder.Decode(block, endHeaders: true, handler: _handler);
-
-            Assert.True(
-                _handler.DecodedHeaders.TryGetValue("a", out string value));
-
-            Assert.Equal("example.com", value);
-            Assert.False(_handler.DecodedHeaders.ContainsKey(":authority"));
-        }
-
-        
         private const int MaxHeaderFieldSize = 8192;
 
         // 4.5.2 - Indexed Field Line - Static Table - Index 25 (:method: GET)
@@ -92,7 +70,30 @@ namespace System.Net.Http.Unit.Tests.QPack
             _decoder.Dispose();
         }
 
-        // Regression test: Reset must clear a pending static header name.
+        // T0: Vérifie que le deuxième bloc fonctionne avec un décodeur neuf.
+        [Fact]
+        public void T0_Block2_OnFreshDecoder_DecodesLiteralA()
+        {
+            using var decoder = new QPackDecoder(MaxHeaderFieldSize);
+            var handler = new TestHttpHeadersHandler();
+
+            byte[] block =
+            {
+                0x00, 0x00, 0x21, 0x61, 0x0B,
+                0x65, 0x78, 0x61, 0x6D,
+                0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D
+            };
+
+            decoder.Decode(block, endHeaders: true, handler: handler);
+
+            Assert.True(
+                handler.DecodedHeaders.TryGetValue("a", out string value));
+
+            Assert.Equal("example.com", value);
+            Assert.False(handler.DecodedHeaders.ContainsKey(":authority"));
+        }
+
+        // Test de régression : Reset doit effacer le nom statique en attente.
         [Fact]
         public void Reset_ClearsPendingStaticHeaderName()
         {
@@ -115,13 +116,14 @@ namespace System.Net.Http.Unit.Tests.QPack
                 },
                 endHeaders: true,
                 handler: _handler);
-                
-                Console.WriteLine("HEADERS DECODED:");
-                foreach (var header in _handler.DecodedHeaders)
-                {
-                    Console.WriteLine($"{header.Key} = {header.Value}");
-                }
-                
+
+            Console.WriteLine("HEADERS DECODED:");
+
+            foreach (var header in _handler.DecodedHeaders)
+            {
+                Console.WriteLine($"{header.Key} = {header.Value}");
+            }
+
             Assert.True(
                 _handler.DecodedHeaders.TryGetValue("a", out string value));
 
@@ -178,7 +180,7 @@ namespace System.Net.Http.Unit.Tests.QPack
                 .Concat(_headerValue)
                 .ToArray();
 
-            _decoder.Decode(new byte[] { 0, 0 }, endHeaders: false, handler: _handler);
+            _decoder.Decode(new byte[] { 0x00, 0x00 }, endHeaders: false, handler: _handler);
             _decoder.Decode(encoded, endHeaders: true, handler: _handler);
             Assert.Equal(_headerValueString, _handler.DecodedHeaders[_contentTypeString]);
 
@@ -367,19 +369,17 @@ namespace System.Net.Http.Unit.Tests.QPack
         [Fact]
         public void HuffmanDecodedHeaderName_ExceedsLimitAfterDecoding_Throws()
         {
-            // '0' (ASCII 48) has a 5-bit Huffman code (00000).
-            // 16 '0' characters = 80 Huffman bits = 10 encoded bytes, but decodes to 16 bytes.
-            // Encoded length (10) passes the pre-decode check (<= 10), but decoded length (16) exceeds the limit.
             using QPackDecoder decoder = new QPackDecoder(maxHeadersLength: 10);
             TestHttpHeadersHandler handler = new TestHttpHeadersHandler();
 
             byte[] encoded = new byte[]
             {
-                0x00, 0x00, // Required insert count (0) and base (0)
-                0x2f, 0x03, // Literal field with literal name: N=0, H=1, name length = 10 (3-bit prefix: 7 + 3)
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 10 bytes Huffman -> 16 '0' chars
-                0x01,       // Value length = 1 (no Huffman)
-                0x61        // Value = "a"
+                0x00, 0x00,
+                0x2f, 0x03,
+                0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00,
+                0x01,
+                0x61
             };
 
             QPackDecodingException exception = Assert.Throws<QPackDecodingException>(() => decoder.Decode(encoded, endHeaders: true, handler: handler));
@@ -395,11 +395,12 @@ namespace System.Net.Http.Unit.Tests.QPack
 
             byte[] encoded = new byte[]
             {
-                0x00, 0x00, // Required insert count (0) and base (0)
-                0x21,       // Literal field with literal name: N=0, H=0, name length = 1 (3-bit prefix)
-                0x61,       // Name = "a"
-                0x8a,       // Huffman flag set (0x80) + value length 10 (7-bit prefix)
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00  // 10 bytes Huffman -> 16 '0' chars
+                0x00, 0x00,
+                0x21,
+                0x61,
+                0x8a,
+                0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00
             };
 
             QPackDecodingException exception = Assert.Throws<QPackDecodingException>(() => decoder.Decode(encoded, endHeaders: true, handler: handler));
@@ -409,14 +410,9 @@ namespace System.Net.Http.Unit.Tests.QPack
 
         public static readonly TheoryData<byte[]> _incompleteHeaderBlockData = new TheoryData<byte[]>
         {
-            // Incomplete header
             new byte[] { },
             new byte[] { 0x00 },
-
-            // 4.5.4 - Literal Header Field With Name Reference - Static Table - Index 44 (content-type)
             new byte[] { 0x00, 0x00, 0x5f },
-
-            // 4.5.6 - Literal Field Line With Literal Name - (translate)
             new byte[] { 0x00, 0x00, 0x37 },
             new byte[] { 0x00, 0x00, 0x37, 0x02 },
             new byte[] { 0x00, 0x00, 0x37, 0x02, 0x74, 0x72, 0x61, 0x6e, 0x73, 0x6c, 0x61, 0x74 },
@@ -432,9 +428,7 @@ namespace System.Net.Http.Unit.Tests.QPack
         }
 
         [Theory]
-        // Indexed Field Line - Static Table - Index 99 (out of range)
         [InlineData(new byte[] { 0xff, 0x24 }, 99)]
-        // Literal Header Field With Name Reference - Static Table - Index 99 (out of range)
         [InlineData(new byte[] { 0x5f, 0x54, 0x01, 0x61 }, 99)]
         public void DecodesIndexOutsideStaticTable_Error(byte[] encoded, int index)
         {
@@ -447,7 +441,10 @@ namespace System.Net.Http.Unit.Tests.QPack
 
         private static void TestDecodeWithoutIndexing(byte[] encoded, string expectedHeaderName, string expectedHeaderValue)
         {
-            KeyValuePair<string, string>[] expectedValues = new[] { new KeyValuePair<string, string>(expectedHeaderName, expectedHeaderValue) };
+            KeyValuePair<string, string>[] expectedValues = new[]
+            {
+                new KeyValuePair<string, string>(expectedHeaderName, expectedHeaderValue)
+            };
 
             TestDecodeWithoutIndexing(encoded, expectedValues);
         }
@@ -474,7 +471,6 @@ namespace System.Net.Http.Unit.Tests.QPack
             using QPackDecoder decoder = new QPackDecoder(MaxHeaderFieldSize);
             TestHttpHeadersHandler handler = new TestHttpHeadersHandler();
 
-            // Read past header
             decoder.Decode(new byte[] { 0x00, 0x00 }, endHeaders: false, handler: handler);
 
             if (bytesAtATime == null)
@@ -485,7 +481,6 @@ namespace System.Net.Http.Unit.Tests.QPack
             {
                 int chunkSize = bytesAtATime.Value;
 
-                // Parse data in chunks, separated by empty chunks
                 for (int i = 0; i < encoded.Length; i += chunkSize)
                 {
                     int resolvedSize = Math.Min(encoded.Length - i, chunkSize);
