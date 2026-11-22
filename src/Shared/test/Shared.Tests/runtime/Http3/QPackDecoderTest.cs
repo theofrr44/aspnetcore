@@ -18,6 +18,28 @@ namespace System.Net.Http.Unit.Tests.QPack
 {
     public class QPackDecoderTests : IDisposable
     {
+
+        
+        [Fact]
+        public void T0_Block2_OnFreshDecoder_DecodesLiteralA()
+        {
+            byte[] block =
+            {
+                0x00, 0x00, 0x21, 0x61, 0x0B,
+                0x65, 0x78, 0x61, 0x6D,
+                0x70, 0x6C, 0x65, 0x2E, 0x63, 0x6F, 0x6D
+            };
+
+            _decoder.Decode(block, endHeaders: true, handler: _handler);
+
+            Assert.True(
+                _handler.DecodedHeaders.TryGetValue("a", out string value));
+
+            Assert.Equal("example.com", value);
+            Assert.False(_handler.DecodedHeaders.ContainsKey(":authority"));
+        }
+
+        
         private const int MaxHeaderFieldSize = 8192;
 
         // 4.5.2 - Indexed Field Line - Static Table - Index 25 (:method: GET)
