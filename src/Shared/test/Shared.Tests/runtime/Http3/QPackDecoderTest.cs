@@ -93,7 +93,13 @@ namespace System.Net.Http.Unit.Tests.QPack
                 },
                 endHeaders: true,
                 handler: _handler);
-
+                
+                Console.WriteLine("HEADERS DECODED:");
+                foreach (var header in _handler.DecodedHeaders)
+                {
+                    Console.WriteLine($"{header.Key} = {header.Value}");
+                }
+                
             Assert.True(
                 _handler.DecodedHeaders.TryGetValue("a", out string value));
 
