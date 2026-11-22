@@ -1,5 +1,5 @@
 
-name: QPACK targeted test
+name: QPACK isolated regression test
 
 on:
   workflow_dispatch:
@@ -16,12 +16,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build and run targeted QPACK test
+      - name: Build Kestrel test project without running tests
         shell: bash
         run: |
           ./eng/build.sh \
             --projects "$GITHUB_WORKSPACE/src/Servers/Kestrel/Core/test/Microsoft.AspNetCore.Server.Kestrel.Core.Tests.csproj" \
-            --test \
             --configuration Release \
             --ci \
-            "/p:VSTestTestCaseFilter=FullyQualifiedName~Reset_ClearsPendingStaticHeaderName"
+            --no-test
+
+      - name: Run only the QPACK regression test
+        shell: bash
+        run: |
+          dotnet test \
+            "$GITHUB_WORKSPACE/src/Servers/Kestrel/Core/test/Microsoft.AspNetCore.Server.Kestrel.Core.Tests.csproj" \
+            --configuration Release \
+            --no-build \
+            --no-restore \
+            --filter "FullyQualifiedName~Reset_ClearsPendingStaticHeaderName" \
+            --logger "console;verbosity=normal" \
+            --logger "trx;LogFileName=QPACK-targeted.trx" \
+            --results-directory "$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
+
+      - name: Upload QPACK test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: QPACK-isolated-results
+          path: artifacts/TestResults/Targeted/
+          if-no-files-found: warn
