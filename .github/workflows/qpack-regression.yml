@@ -1,4 +1,3 @@
-
 name: QPACK isolated regression test
 
 on:
@@ -10,13 +9,13 @@ permissions:
 jobs:
   qpack-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build Kestrel test project without running tests
+      - name: Build Kestrel Core test project
         shell: bash
         run: |
           ./eng/build.sh \
@@ -25,7 +24,7 @@ jobs:
             --ci \
             --no-test
 
-      - name: Run only the QPACK regression test
+      - name: Run QPACK decoder regression test
         shell: bash
         run: |
           dotnet test \
@@ -35,10 +34,32 @@ jobs:
             --no-restore \
             --filter "FullyQualifiedName~Reset_ClearsPendingStaticHeaderName" \
             --logger "console;verbosity=normal" \
-            --logger "trx;LogFileName=QPACK-targeted.trx" \
+            --logger "trx;LogFileName=QPACK-decoder-targeted.trx" \
             --results-directory "$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
 
-      - name: Upload QPACK test report
+      - name: Build Kestrel in-memory functional test project
+        shell: bash
+        run: |
+          ./eng/build.sh \
+            --projects "$GITHUB_WORKSPACE/src/Servers/Kestrel/test/InMemory.FunctionalTests/InMemory.FunctionalTests.csproj" \
+            --configuration Release \
+            --ci \
+            --no-test
+
+      - name: Run QPACK stream-reuse integration test
+        shell: bash
+        run: |
+          dotnet test \
+            "$GITHUB_WORKSPACE/src/Servers/Kestrel/test/InMemory.FunctionalTests/InMemory.FunctionalTests.csproj" \
+            --configuration Release \
+            --no-build \
+            --no-restore \
+            --filter "FullyQualifiedName~IncompleteTrailerHeaders_DoesNotCorruptNextPooledRequest" \
+            --logger "console;verbosity=normal" \
+            --logger "trx;LogFileName=QPACK-stream-reuse.trx" \
+            --results-directory "$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
+
+      - name: Upload QPACK test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
