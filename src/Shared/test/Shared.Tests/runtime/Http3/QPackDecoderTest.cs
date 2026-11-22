@@ -1,3 +1,4 @@
+
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
@@ -69,39 +70,39 @@ namespace System.Net.Http.Unit.Tests.QPack
             _decoder.Dispose();
         }
 
-        
-        
-[Fact]
-public void Reset_ClearsPendingStaticHeaderName()
-{
-    _decoder.Decode(
-        new byte[] { 0x00, 0x00, 0x50 },
-        endHeaders: false,
-        handler: _handler);
-
-    _decoder.Reset();
-
-    _decoder.Decode(
-        new byte[]
+        // Regression test: Reset must clear a pending static header name.
+        [Fact]
+        public void Reset_ClearsPendingStaticHeaderName()
         {
-            0x00, 0x00,
-            0x21, 0x61,
-            0x0B,
-            0x65, 0x78, 0x61, 0x6D,
-            0x70, 0x6C, 0x65, 0x2E,
-            0x63, 0x6F, 0x6D
-        },
-        endHeaders: true,
-        handler: _handler);
+            _decoder.Decode(
+                new byte[] { 0x00, 0x00, 0x50 },
+                endHeaders: false,
+                handler: _handler);
 
-    Assert.True(
-        _handler.DecodedHeaders.TryGetValue("a", out string value));
+            _decoder.Reset();
 
-    Assert.Equal("example.com", value);
-    Assert.False(
-        _handler.DecodedHeaders.ContainsKey(":authority"));
-}
+            _decoder.Decode(
+                new byte[]
+                {
+                    0x00, 0x00,
+                    0x21, 0x61,
+                    0x0B,
+                    0x65, 0x78, 0x61, 0x6D,
+                    0x70, 0x6C, 0x65, 0x2E,
+                    0x63, 0x6F, 0x6D
+                },
+                endHeaders: true,
+                handler: _handler);
 
+            Assert.True(
+                _handler.DecodedHeaders.TryGetValue("a", out string value));
+
+            Assert.Equal("example.com", value);
+            Assert.False(
+                _handler.DecodedHeaders.ContainsKey(":authority"));
+        }
+
+        [Fact]
         public void DecodesIndexedHeaderField_StaticTableWithValue()
         {
             _decoder.Decode(new byte[] { 0, 0 }, endHeaders: false, handler: _handler);
@@ -115,8 +116,6 @@ public void Reset_ClearsPendingStaticHeaderName()
         [Theory]
         [InlineData(new byte[] { 0xc0 }, 0, ":authority", "")]
         [InlineData(new byte[] { 0xff, 0x23 }, 98, "x-frame-options", "sameorigin")]
-
-        [Fact]
         public void DecodesIndexedHeaderField_StaticTableBoundaries(byte[] encoded, int index, string expectedHeaderName, string expectedHeaderValue)
         {
             _decoder.Decode(new byte[] { 0x00, 0x00 }, endHeaders: false, handler: _handler);
