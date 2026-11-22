@@ -752,6 +752,20 @@ internal class Http3RequestStream : Http3StreamBase, IHttpStreamHeadersHandler
     /// The frame header declares <paramref name="declaredLength"/> bytes, but only one byte is sent.
     /// </summary>
     internal async Task SendTrailerHeadersPartialAsync(int declaredLength = 100)
+    internal async Task SendTrailerHeadersPartialAndEndStreamAsync(
+        ReadOnlyMemory<byte> payload,
+        int declaredLength)
+    {
+        var outputWriter = Pair.Application.Output;
+
+        Http3FrameWriter.WriteHeader(
+            Http3FrameType.Headers,
+            frameLength: declaredLength,
+            outputWriter);
+
+        // Close the stream while the HEADERS payload is incomplete.
+        await EndStreamAsync(payload.Span);
+    }
     {
         var outputWriter = Pair.Application.Output;
         Http3FrameWriter.WriteHeader(Http3FrameType.Headers, frameLength: declaredLength, outputWriter);
