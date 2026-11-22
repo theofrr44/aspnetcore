@@ -33,7 +33,7 @@ jobs:
             --configuration Release \
             --no-build \
             --no-restore \
-            --filter "FullyQualifiedName~T0_Block2_OnFreshDecoder_DecodesLiteralA" \
+            --filter "FullyQualifiedName~Reset_ClearsPendingStaticHeaderName" \
             --logger "console;verbosity=normal" \
             --logger "trx;LogFileName=QPACK-targeted.trx" \
             --results-directory "$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
