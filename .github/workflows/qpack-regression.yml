@@ -1,0 +1,35 @@
+
+name: QPACK regression test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/Shared/test/Shared.Tests/runtime/Http3/QPackDecoderTest.cs'
+      - 'src/Servers/Kestrel/Core/**'
+      - 'global.json'
+      - 'eng/**'
+
+permissions:
+  contents: read
+
+jobs:
+  qpack-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Build and run Kestrel Core tests
+        shell: bash
+        run: |
+          ./eng/build.sh \
+            --projects "$GITHUB_WORKSPACE/src/Servers/Kestrel/Core/test/Microsoft.AspNetCore.Server.Kestrel.Core.Tests.csproj" \
+            --test \
+            --configuration Release \
+            --ci
