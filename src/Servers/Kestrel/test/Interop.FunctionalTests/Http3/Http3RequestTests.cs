@@ -58,7 +58,7 @@ public class Http3RequestTests : LoggedTest
             }
 
         context.Response.StatusCode = 200;
-    });
+     }, protocol: HttpProtocols.Http3);
 
     using var host = builder.Build();
     await host.StartAsync();
