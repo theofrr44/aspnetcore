@@ -31,6 +31,128 @@ namespace Interop.FunctionalTests.Http3;
 [Collection(nameof(NoParallelCollection))]
 public class Http3RequestTests : LoggedTest
 {
+
+    [ConditionalFact]
+    [MsQuicSupported]
+    public async Task QPack_IncompleteTrailers_StreamReuse_DoesNotCorruptNextRequest()
+    {
+        var requestCount = 0;
+        var firstRequestCompleted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondRequestProcessed = new TaskCompletionSource<string>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var builder = CreateHostBuilder(async context =>
+        {
+            var count = Interlocked.Increment(ref requestCount);
+
+            if (count == 1)
+            {
+                await context.Request.Body.CopyToAsync(Stream.Null);
+                firstRequestCompleted.TrySetResult();
+            }
+            else
+            {
+                var value = context.Request.Headers["a"].ToString();
+                secondRequestProcessed.TrySetResult(value);
+            }
+
+        context.Response.StatusCode = 200;
+    });
+
+    using var host = builder.Build();
+    await host.StartAsync();
+
+    await using var connection = await QuicConnection.ConnectAsync(
+        new QuicClientConnectionOptions
+        {
+            RemoteEndPoint = new IPEndPoint(IPAddress.Loopback, host.GetPort()),
+            DefaultCloseErrorCode = 0,
+            DefaultStreamErrorCode = 0,
+            MaxInboundBidirectionalStreams = 0,
+            MaxInboundUnidirectionalStreams = 0,
+            ClientAuthenticationOptions = new SslClientAuthenticationOptions
+            {
+                ApplicationProtocols = [new SslApplicationProtocol("h3")],
+                RemoteCertificateValidationCallback = static (_, _, _, _) => true,
+                TargetHost = "localhost"
+            }
+        });
+
+    // Client HTTP/3 control stream + SETTINGS.
+    await using var control = await connection.OpenOutboundStreamAsync(
+        QuicStreamType.Unidirectional);
+
+    await control.WriteAsync(new byte[]
+    {
+        0x00, // Control stream
+        0x04, // SETTINGS frame
+        0x00  // Empty SETTINGS payload
+    });
+
+    // First request: valid GET headers, without ending the stream.
+    await using var first = await connection.OpenOutboundStreamAsync(
+        QuicStreamType.Bidirectional);
+
+    await first.WriteAsync(new byte[]
+    {
+        0x01, 0x05, // HEADERS frame, 5 bytes
+        0x00, 0x00, // QPACK prefix
+        0xD1,       // :method GET
+        0xD7,       // :scheme https
+        0xC1        // :path /
+    });
+
+    // Incomplete trailing HEADERS frame:
+    // declared payload length = 100, actual payload = 3 bytes.
+    await first.WriteAsync(new byte[]
+    {
+        0x01, 0x40, 0x64,
+        0x00, 0x00, 0x50
+    });
+
+    // Graceful QUIC FIN.
+    first.CompleteWrites();
+
+    await firstRequestCompleted.Task.DefaultTimeout();
+
+    await WaitForLogAsync(
+        logs => logs.Any(w =>
+            w.LoggerName == "Microsoft.AspNetCore.Server.Kestrel.Transport.Quic" &&
+            w.EventId.Name == "StreamPooled"),
+        "Wait for QUIC stream pooling.");
+
+    // Second request on the same QUIC connection.
+    await using var second = await connection.OpenOutboundStreamAsync(
+        QuicStreamType.Bidirectional);
+
+    await second.WriteAsync(new byte[]
+    {
+        0x01, 0x13, // HEADERS frame, 19 bytes
+        0x00, 0x00,
+        0xD1,       // :method GET
+        0xD7,       // :scheme https
+        0xC1,       // :path /
+
+        0x21, 0x61, // Literal header name: a
+        0x0B,       // Value length: 11
+
+        (byte)'e', (byte)'x', (byte)'a',
+        (byte)'m', (byte)'p', (byte)'l',
+        (byte)'e', (byte)'.', (byte)'c',
+        (byte)'o', (byte)'m'
+    });
+
+    second.CompleteWrites();
+
+    var received = await secondRequestProcessed.Task.DefaultTimeout();
+
+    Assert.Equal("example.com", received);
+
+    await host.StopAsync();
+}
+
+    
     private class StreamingHttpContent : HttpContent
     {
         private readonly TaskCompletionSource _completeTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
