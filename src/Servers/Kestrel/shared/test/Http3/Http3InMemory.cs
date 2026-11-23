@@ -750,6 +750,11 @@ internal class Http3RequestStream : Http3StreamBase, IHttpStreamHeadersHandler
         await SendAsync(payload.Span);
     }
 
+    internal Task SendTrailerHeadersPartialAsync()
+    {
+        return SendTrailerHeadersPartialAsync(new byte[] { 0x00 }, declaredLength: 100);
+    }
+
     /// <summary>
     /// Sends an incomplete trailer HEADERS frame and immediately closes
     /// the stream before the declared payload is complete.
