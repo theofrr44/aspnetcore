@@ -78,7 +78,7 @@ public class Http3QPackStaleStateTests : Http3TestBase
             (byte)'e', (byte)'.', (byte)'c', (byte)'o', (byte)'m'
         };
 
-        await second.SendHeadersAsync(secondRequestHeaderBlock, endStream: true);
+        await second.SendFrameAsync(Http3FrameType.Headers, secondRequestHeaderBlock, endStream: true);
         await secondRequestProcessed.Task.DefaultTimeout();
 
         var secondServerStream = (Http3Stream)second.StreamContext.Features
