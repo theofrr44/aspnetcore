@@ -24,9 +24,17 @@ public class Http3QPackStaleStateTests : Http3TestBase
         var secondRequestHasA = false;
         var secondRequestA = string.Empty;
 
-        await Http3Api.InitializeConnectionAsync(context =>
+        await Http3Api.InitializeConnectionAsync(async context =>
         {
-            if (Interlocked.Increment(ref requestCount) == 2)
+            if (Interlocked.Increment(ref requestCount) == 1)
+            {
+                // Keep the first request active until the incomplete trailers arrive.
+                var buffer = new byte[1024];
+                while (await context.Request.Body.ReadAsync(buffer, 0, buffer.Length) != 0)
+                {
+                }
+            }
+            else
             {
                 secondRequestHasA =
                     context.Request.Headers.TryGetValue("a", out var value);
@@ -34,8 +42,6 @@ public class Http3QPackStaleStateTests : Http3TestBase
                 secondRequestA = value.ToString();
                 secondRequestProcessed.TrySetResult();
             }
-
-            return Task.CompletedTask;
         });
 
         await Http3Api.CreateControlStream();
@@ -43,57 +49,44 @@ public class Http3QPackStaleStateTests : Http3TestBase
 
         var firstHeaders = new[]
         {
-            new KeyValuePair<string, string>(
-                InternalHeaderNames.Method, "GET"),
-            new KeyValuePair<string, string>(
-                InternalHeaderNames.Path, "/"),
-            new KeyValuePair<string, string>(
-                InternalHeaderNames.Scheme, "http"),
-            new KeyValuePair<string, string>(
-                InternalHeaderNames.Authority, "localhost:80"),
+            new KeyValuePair<string, string>(InternalHeaderNames.Method, "GET"),
+            new KeyValuePair<string, string>(InternalHeaderNames.Path, "/"),
+            new KeyValuePair<string, string>(InternalHeaderNames.Scheme, "http"),
+            new KeyValuePair<string, string>(InternalHeaderNames.Authority, "localhost:80"),
         };
 
-        // Send the first complete request headers.
         var first = await Http3Api.CreateRequestStream(firstHeaders);
-
-        await first.ExpectHeadersAsync();
 
         var firstServerStream = (Http3Stream)first.StreamContext.Features
             .Get<IPersistentStateFeature>()
             .State[Http3Connection.StreamPersistentStateKey];
 
-        // QPACK prefix: Required Insert Count = 0, Base = 0.
-        // 0x50 starts a literal field using static name index 0 (:authority),
-        // but its value is missing.
+        // Start a literal using static name index 0 (:authority), without its value.
         await first.SendTrailerHeadersPartialAndEndStreamAsync(
             new byte[] { 0x00, 0x00, 0x50 },
             declaredLength: 100);
 
-        // Wait for the first client-side stream context to be disposed.
+        // The application completes only after Kestrel processes the partial trailers.
+        await first.ExpectHeadersAsync();
         await first.OnDisposedTask.DefaultTimeout();
 
         Assert.True(
             firstServerStream.CanReuse,
             "The first Http3Stream was not eligible for pooling after the incomplete trailer block.");
 
-        // Create another request on the same connection.
         var second = await Http3Api.CreateRequestStream(
             Array.Empty<KeyValuePair<string, string>>());
 
-        // Confirm that the client-side transport context was reused.
         Assert.Same(first.StreamContext, second.StreamContext);
 
         byte[] secondRequestHeaderBlock =
         {
-            0x00, 0x00, // Required Insert Count = 0, Base = 0
-
-            0xD1,       // :method: GET
-            0xD6,       // :scheme: http
-            0xC1,       // :path: /
-
-            0x21, 0x61, // Literal header name: "a"
-            0x0B,       // Value length: 11
-
+            0x00, 0x00,
+            0xD1,
+            0xD6,
+            0xC1,
+            0x21, 0x61,
+            0x0B,
             (byte)'e',
             (byte)'x',
             (byte)'a',
@@ -118,12 +111,8 @@ public class Http3QPackStaleStateTests : Http3TestBase
             .Get<IPersistentStateFeature>()
             .State[Http3Connection.StreamPersistentStateKey];
 
-        // Confirm that the actual Kestrel Http3Stream was reused.
-        Assert.Same(
-            firstServerStream,
-            secondServerStream);
+        Assert.Same(firstServerStream, secondServerStream);
 
-        // The stale static index must not replace the literal header name "a".
         Assert.True(
             secondRequestHasA,
             "The second request lost its literal 'a' header.");
@@ -135,4 +124,3 @@ public class Http3QPackStaleStateTests : Http3TestBase
         await second.OnDisposedTask.DefaultTimeout();
     }
 }
-
