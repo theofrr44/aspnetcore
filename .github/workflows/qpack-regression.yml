@@ -1,3 +1,4 @@
+
 name: QPACK isolated regression test
 
 on:
@@ -58,6 +59,28 @@ jobs:
             --filter "FullyQualifiedName~IncompleteTrailerHeaders_DoesNotCorruptNextPooledRequest" \
             --logger "console;verbosity=normal" \
             --logger "trx;LogFileName=QPACK-stream-reuse.trx" \
+            --results-directory "$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
+
+      - name: Build Kestrel interop functional test project
+        shell: bash
+        run: |
+          ./eng/build.sh \
+            --projects "$GITHUB_WORKSPACE/src/Servers/Kestrel/test/Interop.FunctionalTests/Interop.FunctionalTests.csproj" \
+            --configuration Release \
+            --ci \
+            --no-test
+
+      - name: Run real QUIC QPACK stream-reuse regression test
+        shell: bash
+        run: |
+          dotnet test \
+            "$GITHUB_WORKSPACE/src/Servers/Kestrel/test/Interop.FunctionalTests/Interop.FunctionalTests.csproj" \
+            --configuration Release \
+            --no-build \
+            --no-restore \
+            --filter "FullyQualifiedName~QPack_IncompleteTrailers_StreamReuse_DoesNotCorruptNextRequest" \
+            --logger "console;verbosity=normal" \
+            --logger "trx;LogFileName=QPACK-msquic-stream-reuse.trx" \
             --results-directory "$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
 
       - name: Upload QPACK test reports
