@@ -3,6 +3,12 @@ name: QPACK isolated regression test
 
 on:
   workflow_dispatch:
+    inputs:
+      target_ref:
+        description: 'Git ref to test (old commit or main)'
+        required: true
+        default: 'main'
+        type: string
 
 permissions:
   contents: read
@@ -15,6 +21,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref }}
+
+      - name: Show tested version
+        shell: bash
+        run: |
+          echo "Testing ref: ${{ inputs.target_ref }}"
+          echo "Commit: $(git rev-parse HEAD)"
+          echo "Decoder Reset implementation:"
+          grep -A5 -B1 "public void Reset()" \
+            src/Shared/runtime/Http3/QPack/QPackDecoder.cs
 
       # Install the official Microsoft MsQuic library.
       - name: Install MsQuic
@@ -98,7 +115,7 @@ jobs:
             --no-test
 
       # Run the real QUIC / MsQuic regression test.
-      - name: Run real QUIC QPACK stream-reuse regression test
+      - name: Run the real QUIC QPACK stream-reuse regression test.
         shell: bash
         run: |
           set -e
@@ -123,6 +140,7 @@ jobs:
           import xml.etree.ElementTree as ET
 
           test_name = "QPack_IncompleteTrailers_StreamReuse_DoesNotCorruptNextRequest"
+
           files = glob.glob(
               "artifacts/TestResults/Targeted/QPACK-msquic-stream-reuse.trx"
           )
