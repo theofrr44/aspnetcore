@@ -9,13 +9,37 @@ permissions:
 
 jobs:
   qpack-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Install the official Microsoft MsQuic library.
+      - name: Install MsQuic
+        shell: bash
+        run: |
+          set -e
+
+          sudo apt-get update
+          sudo apt-get install -y wget ca-certificates
+
+          wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb \
+            -O packages-microsoft-prod.deb
+
+          sudo dpkg -i packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo apt-get install -y libmsquic
+
+          sudo ldconfig
+
+          echo "Checking MsQuic installation..."
+          ldconfig -p | grep -i msquic
+
+          echo "MsQuic installation verified."
+
+      # Build Kestrel Core tests.
       - name: Build Kestrel Core test project
         shell: bash
         run: |
@@ -25,8 +49,8 @@ jobs:
             --ci \
             --no-test
 
+      # Unit regression test.
       - name: Run QPACK decoder regression test
-        continue-on-error: true
         shell: bash
         run: |
           dotnet test \
@@ -39,6 +63,7 @@ jobs:
             --logger "trx;LogFileName=QPACK-decoder-targeted.trx" \
             --results-directory "$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
 
+      # Build Kestrel InMemory tests.
       - name: Build Kestrel in-memory functional test project
         shell: bash
         run: |
@@ -48,6 +73,7 @@ jobs:
             --ci \
             --no-test
 
+      # InMemory stream reuse regression test.
       - name: Run QPACK stream-reuse integration test
         shell: bash
         run: |
@@ -61,6 +87,7 @@ jobs:
             --logger "trx;LogFileName=QPACK-stream-reuse.trx" \
             --results-directory "$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
 
+      # Build real HTTP/3 tests.
       - name: Build Kestrel interop functional test project
         shell: bash
         run: |
@@ -70,19 +97,64 @@ jobs:
             --ci \
             --no-test
 
+      # Run the real QUIC / MsQuic regression test.
       - name: Run real QUIC QPACK stream-reuse regression test
         shell: bash
         run: |
+          set -e
+
+          TEST_NAME="QPack_IncompleteTrailers_StreamReuse_DoesNotCorruptNextRequest"
+          RESULTS="$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
+
           dotnet test \
             "$GITHUB_WORKSPACE/src/Servers/Kestrel/test/Interop.FunctionalTests/Interop.FunctionalTests.csproj" \
             --configuration Release \
             --no-build \
             --no-restore \
-            --filter "FullyQualifiedName~QPack_IncompleteTrailers_StreamReuse_DoesNotCorruptNextRequest" \
+            --filter "FullyQualifiedName~$TEST_NAME" \
             --logger "console;verbosity=normal" \
             --logger "trx;LogFileName=QPACK-msquic-stream-reuse.trx" \
-            --results-directory "$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
+            --results-directory "$RESULTS"
 
+          # A skipped test must NOT count as a successful validation.
+          python3 - <<'PY'
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+
+          test_name = "QPack_IncompleteTrailers_StreamReuse_DoesNotCorruptNextRequest"
+          files = glob.glob(
+              "artifacts/TestResults/Targeted/QPACK-msquic-stream-reuse.trx"
+          )
+
+          if not files:
+              sys.exit("ERROR: TRX report was not generated.")
+
+          root = ET.parse(files[0]).getroot()
+
+          results = [
+              result for result in root.iter()
+              if result.tag.endswith("UnitTestResult")
+              and test_name in result.attrib.get("testName", "")
+          ]
+
+          if not results:
+              sys.exit("ERROR: Target QUIC test was not found in the report.")
+
+          outcome = results[0].attrib.get("outcome")
+
+          print(f"QUIC test outcome: {outcome}")
+
+          if outcome != "Passed":
+              sys.exit(
+                  "ERROR: Real QUIC test did not pass. "
+                  "It may have been skipped or failed."
+              )
+
+          print("SUCCESS: Real QUIC test executed and passed.")
+          PY
+
+      # Upload all reports, even if a test fails.
       - name: Upload QPACK test reports
         if: always()
         uses: actions/upload-artifact@v4
