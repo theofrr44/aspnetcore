@@ -323,11 +323,6 @@ internal class Http3InMemory
             }
         }
 
-        public bool OnInboundControlStream(Server.Kestrel.Core.Internal.Http3.Http3ControlStream stream)
-        {
-            return _inner.OnInboundControlStream(stream);
-        }
-
         public void OnStreamConnectionError(Http3ConnectionErrorException ex)
         {
             _inner.OnStreamConnectionError(ex);
