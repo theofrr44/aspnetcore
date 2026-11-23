@@ -161,6 +161,7 @@ namespace System.Net.Http.QPack
         public void Reset()
         {
             _state = State.RequiredInsertCount;
+            _headerStaticIndex = HeaderStaticIndexUnset;
         }
 
         public void Decode(in ReadOnlySequence<byte> data, bool endHeaders, IHttpStreamHeadersHandler handler)
