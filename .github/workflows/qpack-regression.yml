@@ -141,7 +141,7 @@ jobs:
           import sys
           import xml.etree.ElementTree as ET
 
-          test_name = "QPack_IncompleteTrailers_StreamReuse_DoesNotCorruptNextRequest"
+          test_name = "QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorityRequest"
           report = "artifacts/TestResults/Targeted/QPACK-msquic-stream-reuse.trx"
 
           files = glob.glob(report)
