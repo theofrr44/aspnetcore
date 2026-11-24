@@ -117,7 +117,7 @@ jobs:
         run: |
           set -e
 
-          TEST_NAME="QPack_IncompleteTrailers_StreamReuse_DoesNotCorruptNextRequest"
+          TEST_NAME="QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorityRequest"
           RESULTS="$GITHUB_WORKSPACE/artifacts/TestResults/Targeted"
 
           dotnet test \
