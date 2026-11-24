@@ -23,7 +23,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.target_ref }}
+      - name: Inject Host test into vulnerable checkout
+        if: ${{ inputs.target_ref == '53b1091d150beeb41c255183e95430b1dc9e67fd' }}
+        shell: bash
+        run: |
+          git fetch --no-tags --depth=1 origin e7a0beb6be2abf414d19974b59a4276ea73a6b2f
 
+          git show e7a0beb6be2abf414d19974b59a4276ea73a6b2f:src/Servers/Kestrel/test/Interop.FunctionalTests/Http3/Http3RequestTests.cs > src/Servers/Kestrel/test/Interop.FunctionalTests/Http3/Http3RequestTests.cs
       - name: Show tested version
         shell: bash
         run: |
