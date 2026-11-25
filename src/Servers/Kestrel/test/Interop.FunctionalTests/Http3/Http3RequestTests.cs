@@ -154,128 +154,37 @@ public class Http3RequestTests : LoggedTest
 
         [ConditionalFact]
     [MsQuicSupported]
-    public async Task QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorityRequest()
     
-[ConditionalFact]
-[MsQuicSupported]
-public async Task QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorityRequest()
-{
-    var requestCount = 0;
-    var firstRequestCompleted = new TaskCompletionSource(
-        TaskCreationOptions.RunContinuationsAsynchronously);
-    var secondRequestProcessed = new TaskCompletionSource<string>(
-        TaskCreationOptions.RunContinuationsAsynchronously);
-
-    var builder = CreateHostBuilder(async context =>
+    [ConditionalFact]
+    [MsQuicSupported]
+    public async Task QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorityRequest()
     {
-        var count = Interlocked.Increment(ref requestCount);
+        var requestCount = 0;
+        var firstRequestCompleted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondRequestProcessed = new TaskCompletionSource<string>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
-        if (count == 1)
+        var builder = CreateHostBuilder(async context =>
         {
-            await context.Request.Body.CopyToAsync(Stream.Null);
-            firstRequestCompleted.TrySetResult();
-        }
-        else
-        {
-            var authorization = context.Request.Headers.Authorization.ToString();
-            var host = context.Request.Headers.Host.ToString();
+            var count = Interlocked.Increment(ref requestCount);
 
-            secondRequestProcessed.TrySetResult(
-                authorization + "|" + host);
-        }
-
-        context.Response.StatusCode = 200;
-    }, protocol: HttpProtocols.Http3);
-
-    using var host = builder.Build();
-    await host.StartAsync();
-
-    await using var connection = await QuicConnection.ConnectAsync(
-        new QuicClientConnectionOptions
-        {
-            RemoteEndPoint = new IPEndPoint(IPAddress.Loopback, host.GetPort()),
-            DefaultCloseErrorCode = 0,
-            DefaultStreamErrorCode = 0,
-            MaxInboundBidirectionalStreams = 0,
-            MaxInboundUnidirectionalStreams = 0,
-            ClientAuthenticationOptions = new SslClientAuthenticationOptions
+            if (count == 1)
             {
-                ApplicationProtocols = [new SslApplicationProtocol("h3")],
-                RemoteCertificateValidationCallback = static (_, _, _, _) => true,
-                TargetHost = "localhost"
+                await context.Request.Body.CopyToAsync(Stream.Null);
+                firstRequestCompleted.TrySetResult();
             }
-        });
+            else
+            {
+                var authorization = context.Request.Headers.Authorization.ToString();
+                var host = context.Request.Headers.Host.ToString();
 
-    await using var control = await connection.OpenOutboundStreamAsync(
-        QuicStreamType.Unidirectional);
+                secondRequestProcessed.TrySetResult(
+                    authorization + "|" + host);
+            }
 
-    await control.WriteAsync(new byte[]
-    {
-        0x00, 0x04, 0x00
-    });
-
-    // Première requête valide.
-    await using var first = await connection.OpenOutboundStreamAsync(
-        QuicStreamType.Bidirectional);
-
-    await first.WriteAsync(new byte[]
-    {
-        0x01, 0x05,
-        0x00, 0x00,
-        0xD1, 0xD7, 0xC1
-    });
-
-    // Trailers incomplets : index statique 84 = authorization.
-    await first.WriteAsync(new byte[]
-    {
-        0x01, 0x40, 0x64,
-        0x00, 0x00,
-        0x5F, 0x45
-    });
-
-    first.CompleteWrites();
-
-    await firstRequestCompleted.Task.DefaultTimeout();
-
-    await WaitForLogAsync(
-        logs => logs.Any(w =>
-            w.LoggerName == "Microsoft.AspNetCore.Server.Kestrel.Transport.Quic" &&
-            w.EventId.Name == "StreamPooled"),
-        "Wait for QUIC stream pooling.");
-
-    // Deuxième requête : Host est envoyé comme champ littéral.
-    // Si l'index 84 a survécu au Reset(), Host devient Authorization.
-    await using var second = await connection.OpenOutboundStreamAsync(
-        QuicStreamType.Bidirectional);
-
-    await second.WriteAsync(new byte[]
-    {
-        0x01, 0x16,
-        0x00, 0x00,
-
-        0xD1, // :method GET
-        0xD7, // :scheme https
-        0xC1, // :path /
-
-        0x24, // Nom littéral : host
-        (byte)'h', (byte)'o', (byte)'s', (byte)'t',
-
-        0x0B, // Valeur : 11 octets
-        (byte)'e', (byte)'x', (byte)'a',
-        (byte)'m', (byte)'p', (byte)'l',
-        (byte)'e', (byte)'.', (byte)'c',
-        (byte)'o', (byte)'m'
-    });
-
-    second.CompleteWrites();
-
-    var received = await secondRequestProcessed.Task.DefaultTimeout();
-
-    Assert.Equal("example.com|", received);
-
-    await host.StopAsync();
-}
-, protocol: HttpProtocols.Http3);
+            context.Response.StatusCode = 200;
+        }, protocol: HttpProtocols.Http3);
 
         using var host = builder.Build();
         await host.StartAsync();
@@ -299,10 +208,7 @@ public async Task QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorit
         await using var control = await connection.OpenOutboundStreamAsync(
             QuicStreamType.Unidirectional);
 
-        await control.WriteAsync(new byte[]
-        {
-            0x00, 0x04, 0x00
-        });
+        await control.WriteAsync(new byte[] { 0x00, 0x04, 0x00 });
 
         // Première requête valide.
         await using var first = await connection.OpenOutboundStreamAsync(
@@ -315,11 +221,12 @@ public async Task QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorit
             0xD1, 0xD7, 0xC1
         });
 
-        // Trailers incomplets : index statique 1 = :path.
+        // Trailers incomplets : index statique 84 = authorization.
         await first.WriteAsync(new byte[]
         {
             0x01, 0x40, 0x64,
-            0x00, 0x00, 0x51
+            0x00, 0x00,
+            0x5F, 0x45
         });
 
         first.CompleteWrites();
@@ -332,7 +239,7 @@ public async Task QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorit
                 w.EventId.Name == "StreamPooled"),
             "Wait for QUIC stream pooling.");
 
-        // Deuxième requête : Host au lieu de :authority.
+        // Deuxième requête : Host est envoyé comme champ littéral.
         await using var second = await connection.OpenOutboundStreamAsync(
             QuicStreamType.Bidirectional);
 
@@ -340,13 +247,15 @@ public async Task QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorit
         {
             0x01, 0x16,
             0x00, 0x00,
-            0xD1,       // :method GET
-            0xD7,       // :scheme https
-            0xC1,       // :path /
 
-            0x24,       // Nom littéral : 4 octets
+            0xD1, // :method GET
+            0xD7, // :scheme https
+            0xC1, // :path /
+
+            0x24, // Nom littéral : host
             (byte)'h', (byte)'o', (byte)'s', (byte)'t',
-            0x0B,       // Valeur : 11 octets
+
+            0x0B, // Valeur : 11 octets
             (byte)'e', (byte)'x', (byte)'a',
             (byte)'m', (byte)'p', (byte)'l',
             (byte)'e', (byte)'.', (byte)'c',
@@ -357,10 +266,11 @@ public async Task QPack_IncompleteTrailers_StreamReuse_DoesNotRejectHostAuthorit
 
         var received = await secondRequestProcessed.Task.DefaultTimeout();
 
-        Assert.Equal("example.com", received);
+        Assert.Equal("example.com|", received);
 
         await host.StopAsync();
     }
+
     
     private class StreamingHttpContent : HttpContent
     {
