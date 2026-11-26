@@ -267,7 +267,7 @@ public class Http3RequestTests : LoggedTest
 
         var received = await secondRequestProcessed.Task.DefaultTimeout();
 
-        Assert.Equal("example.com|", received);
+        Assert.Equal("|example.com", received);
 
         await host.StopAsync();
     }
